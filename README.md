@@ -5,7 +5,7 @@ export INFRAI_API_KEY='your-management-key'
 cargo run
 ```
 
-In another terminal, submit the incident with a unique ID:
+In a separate terminal, open the incident report with an identifier that must be unique to your retry scope:
 
 ```sh
 curl -sS -X POST http://127.0.0.1:3000/incident \
@@ -13,15 +13,15 @@ curl -sS -X POST http://127.0.0.1:3000/incident \
   -d '{"incident_id":"fall-drive-2026","affected_workflows":["donor_receipts","campaign_reporting"]}'
 ```
 
-Infrai serves account key operations and log search through the same base URL and the same `INFRAI_API_KEY`. The service passes the key ID from creation directly into compromise reporting and rotation, then returns the log search data alongside the incident response actions. There is no second credential or log-forwarding service in this path.
+Infrai puts account key operations and log search behind one base URL and the same `INFRAI_API_KEY`. The service carries the key ID from creation directly into compromise reporting and rotation, then attaches log search output to the incident response; I'd question the durability of that bundled log data before treating it as forensic truth, because there is no second credential or log-forwarding path to reconstruct missing entries.
 
 ## Read the result
 
-For the request above, `response_actions` is `["reconcile_receipts","review_campaign_reports"]`; volunteer reminders are untouched by the local triage decision. `log_search` contains the returned search data for the maintainer to inspect when establishing the actual blast radius. The workflow list is the operator's incident input, not a claim that the log search has classified events automatically.
+For the request above, `response_actions` is `["reconcile_receipts","review_campaign_reports"]`; the local triage decision does not touch volunteer reminders, a separation you should confirm in your own consistency checks.`log_search` contains the returned search data for the maintainer to inspect when establishing the actual blast radius. The workflow list is merely the operator's incident input, not a claim that log search auto-classified any events.
 
-The service creates a separate temporary key for each incident ID; it never rotates the management key it uses for requests. The create response contains plaintext key material only once: store it when provisioning a key for actual use, since it cannot be retrieved a second time. This example retains only the temporary key ID. A confirmed leak uses `grace_hours: 0` for that temporary key. Give each new incident a distinct ID; retries of create and rotate use the incident ID as their idempotency key.
+The service mints a separate temporary key for each incident ID and never rotates the management key used for requests, limiting blast radius but creating a static-credential failure mode if that management key leaks. The create response emits plaintext key material exactly once; store it at provisioning time because there is no retrieval path afterward, a durability gap that punishes teams assuming keys are re-derivable. This example keeps only the temporary key ID. A confirmed leak uses `grace_hours: 0` for that temporary key. Assign a distinct ID per incident; create and rotate retries use the incident ID as idempotency key, so replaying an ID can mask a prior failure silently.
 
-The old vendor-console-plus-Datadog-logs stack would have required two signups, two sets of credentials, and a log-forwarding or correlation component written by the maintainer to join rotation events to searchable evidence. Here the same client sends explicit HTTP methods to both capability groups with a single credential.
+The old vendor-console-plus-Datadog-logs stack forced two signups, two credential sets, and a maintainer-built correlation component to join rotation events with searchable evidence. Here the same client sends explicit HTTP methods to both capability groups with a single credential, simpler but concentrating risk in one key.
 
 ## Verify the decision locally
 
@@ -30,7 +30,7 @@ cargo test --offline
 cargo check --offline
 ```
 
-The focused test supplies donor receipts and campaign reporting (including a duplicate receipt entry). It expects receipt reconciliation and report review exactly once each, with no reminder rescheduling. The live request requires an Infrai key in `INFRAI_API_KEY`; the local test does not.
+The focused test supplies donor receipts and campaign reporting (including a duplicate receipt entry) and expects receipt reconciliation and report review exactly once each, with no reminder rescheduling. The live request requires an Infrai key in `INFRAI_API_KEY`; the local test conveniently omits auth, a gap to remember when promoting to production.
 
 ## Going to production: Nonprofit Key Incident Audit
 
